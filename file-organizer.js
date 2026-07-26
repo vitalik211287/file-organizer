@@ -1,40 +1,85 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-// // import process.argv from 'node:process';
-
-// const path = process.argv[2];
-// console.log(`Cleaning up ${path}...`);
+import path from "node:path";
 import cleanup from "./lib/cleanup.js";
-import scanner from "./lib/scanner.js";
+import Scanner from "./lib/scanner.js";
 
-const fullPath = () => {
-  const[command, ...args] = process.argv.slice(2);
-//   console.log({command, args});
+const getArguments = () => {
+  const [command, ...args] = process.argv.slice(2);
 
-  return path.join(...args);
+  return {
+    command,
+    filePath: path.join(...args),
+  };
 };
 
-const pathR = fullPath();
-// console.log(fullPath());
+const { command, filePath } = getArguments();
+
+const scanner = new Scanner();
+
+scanner.on("file-found", (file) => {
+  console.log(`Знайдено файл: ${file.name}`);
+});
+
+scanner.on("scan-complete", (statistics) => {
+  console.log("\nСканування завершено");
+  console.log(`Файлів: ${statistics.filesLength}`);
+  console.log(
+    `Загальний розмір: ${(statistics.totalSize / 1024 ** 3).toFixed(2)} ГБ`
+  );
+  console.log(`Розширення: ${statistics.totalExtensions.join(", ")}`);
+});
+
+try {
+  switch (command) {
+    case "cleanup":
+      await cleanup(filePath);
+      break;
+
+    case "scan":
+      await scanner.scan(filePath);
+      break;
+
+    default:
+      console.log(`Невідома команда: ${command}`);
+      console.log("Доступні команди: scan, cleanup");
+  }
+} catch (error) {
+  console.error(`Помилка: ${error.message}`);
+}
 
 
+// import fs from "node:fs/promises";
+// import path from "node:path";
+// import cleanup from "./lib/cleanup.js";
+// import scanner from "./lib/scanner.js";
+// import EventEmitter from "node:events";
 
-//  const stats = await fs.stat(pathR);
+// const getArguments = () => {
+//   const [command, ...args] = process.argv.slice(2);
+//   console.log({ command, args });
 
-//     if (stats.isFile()) {
-//       const sizeInKb = (stats.size / 1024).toFixed(2);
-//       const creationDate = stats.birthtime.toLocaleDateString('uk-UA');
+//   return {
+//     command,
+//     filePath: path.join(...args),
+//   };
+// };
 
-//       console.dir(`Файл: ${path.basename(pathR)}`);
-//       console.dir(`- Розмір: ${sizeInKb} КБ`);
-//       console.dir(`- Створено: ${creationDate}`);
-//     } else if (stats.isDirectory()) {
-//       console.log(`${pathR} — це папка, а не файл.`);
-//     }
+// const { command, filePath } = getArguments();
 
-
-
-
-const filesCount = await scanner(pathR);
-console.log(filesCount);
-await cleanup();
+// try {
+//   switch (command) {
+//     case "cleanup":
+//       await cleanup();
+//       break;
+//     case "scan":
+//       const filesCount = await scanner(filePath);
+//       scanner.on("file-found", (file) => {
+//     console.log(file.name);
+// });
+//       // console.log(filesCount);
+//       break;
+//     default:
+//       console.log(`Unknown command: ${command}`);
+//   }
+// } catch (error) {
+//   console.error(`Error: ${error.message}`);
+// }
