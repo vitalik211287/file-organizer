@@ -23,11 +23,18 @@ scanner.on("scan-complete", (statistics) => {
   console.log("\nСканування завершено");
   console.log(`Файлів: ${statistics.filesLength}`);
   console.log(
-    `Загальний розмір: ${(statistics.totalSize / 1024 ** 3).toFixed(2)} ГБ`
+    `Загальний розмір: ${(statistics.totalSize.toFixed(5))} ГБ`
   );
-  console.log(`Розширення: ${statistics.totalExtensions.join(", ")}`);
-});
+  console.log("\nЗа типом файлів:");
 
+  for (const [ext, data] of Object.entries(
+    statistics.filesByExtension
+  )) {
+    console.log(
+      `${ext}: ${data.count} файлів, ${data.size.toFixed(5)} ГБ`
+    );
+  }
+});
 try {
   switch (command) {
     case "cleanup":
@@ -46,40 +53,3 @@ try {
   console.error(`Помилка: ${error.message}`);
 }
 
-
-// import fs from "node:fs/promises";
-// import path from "node:path";
-// import cleanup from "./lib/cleanup.js";
-// import scanner from "./lib/scanner.js";
-// import EventEmitter from "node:events";
-
-// const getArguments = () => {
-//   const [command, ...args] = process.argv.slice(2);
-//   console.log({ command, args });
-
-//   return {
-//     command,
-//     filePath: path.join(...args),
-//   };
-// };
-
-// const { command, filePath } = getArguments();
-
-// try {
-//   switch (command) {
-//     case "cleanup":
-//       await cleanup();
-//       break;
-//     case "scan":
-//       const filesCount = await scanner(filePath);
-//       scanner.on("file-found", (file) => {
-//     console.log(file.name);
-// });
-//       // console.log(filesCount);
-//       break;
-//     default:
-//       console.log(`Unknown command: ${command}`);
-//   }
-// } catch (error) {
-//   console.error(`Error: ${error.message}`);
-// }
