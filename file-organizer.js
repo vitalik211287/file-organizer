@@ -22,18 +22,18 @@ scanner.on("file-found", (file) => {
 scanner.on("scan-complete", (statistics) => {
   console.log("\nСканування завершено");
   console.log(`Файлів: ${statistics.filesLength}`);
-  console.log(
-    `Загальний розмір: ${(statistics.totalSize.toFixed(5))} ГБ`
-  );
+  console.log(`Загальний розмір: ${statistics.totalSize.toFixed(5)} ГБ`);
   console.log("\nЗа типом файлів:");
 
-  for (const [ext, data] of Object.entries(
-    statistics.filesByExtension
-  )) {
-    console.log(
-      `${ext}: ${data.count} файлів, ${data.size.toFixed(5)} ГБ`
-    );
+  for (const [ext, data] of Object.entries(statistics.filesByExtension)) {
+    console.log(`${ext}: ${data.count} файлів, ${data.size.toFixed(5)} ГБ`);
   }
+});
+scanner.on("scan-complete", (statistics) => {
+  console.log("File Age:");
+  console.log(`  Last 7 days:   ${statistics.fileAge.last7Days}`);
+  console.log(`  Last 30 days:  ${statistics.fileAge.last30Days}`);
+  console.log(`  Older than 90: ${statistics.fileAge.olderThan90Days}`);
 });
 try {
   switch (command) {
@@ -52,4 +52,3 @@ try {
 } catch (error) {
   console.error(`Помилка: ${error.message}`);
 }
-
