@@ -35,6 +35,17 @@ scanner.on("scan-complete", (statistics) => {
   console.log(`  Last 30 days:  ${statistics.fileAge.last30Days}`);
   console.log(`  Older than 90: ${statistics.fileAge.olderThan90Days}`);
 });
+scanner.on("scan-complete", (statistics) => {
+  console.log("Largest files:");
+  console.log(
+    statistics.fileSizes
+      .map(
+        (file, index) =>
+          `${index + 1}. ${file.name}    ${(file.size / 1024 ** 2).toFixed(2)} MB`,
+      )
+      .join("\n"),
+  );
+});
 try {
   switch (command) {
     case "cleanup":
