@@ -11,32 +11,61 @@ const getArguments = () => {
   };
 };
 
+const getDaysAgo = (date) => {
+  const differenceMilliseconds = new Date() - date;
+
+  return Math.floor(
+    differenceMilliseconds / (1000 * 60 * 60 * 24),
+  );
+};
+
 const { command, filePath } = getArguments();
 
 const scanner = new Scanner();
 
-scanner.on("file-found", (file) => {
-  console.log(`Знайдено файл: ${file.name}`);
-});
+let processedFiles = 0;
+
+scanner.on("file-found", () => {
+  processedFiles++;
+
+  process.stdout.write(`\rProcessing... ${processedFiles} files`);
+});                                  
 
 scanner.on("scan-complete", (statistics) => {
   console.log("\nСканування завершено");
+
   console.log(`Файлів: ${statistics.filesLength}`);
-  console.log(`Загальний розмір: ${statistics.totalSize.toFixed(5)} ГБ`);
+
+  console.log(
+    `Загальний розмір: ${(statistics.totalSize / 1024 ** 3).toFixed(5)} ГБ`,
+  );
+
   console.log("\nЗа типом файлів:");
 
-  for (const [ext, data] of Object.entries(statistics.filesByExtension)) {
-    console.log(`${ext}: ${data.count} файлів, ${data.size.toFixed(5)} ГБ`);
+  for (const [ext, data] of Object.entries(
+    statistics.filesByExtension,
+  )) {
+    console.log(
+      `${ext}: ${data.count} файлів, ${(data.size / 1024 ** 3).toFixed(5)} ГБ`,
+    );
   }
-});
-scanner.on("scan-complete", (statistics) => {
-  console.log("File Age:");
-  console.log(`  Last 7 days:   ${statistics.fileAge.last7Days}`);
-  console.log(`  Last 30 days:  ${statistics.fileAge.last30Days}`);
-  console.log(`  Older than 90: ${statistics.fileAge.olderThan90Days}`);
-});
-scanner.on("scan-complete", (statistics) => {
-  console.log("Largest files:");
+
+  console.log("\nFile Age:");
+
+  console.log(
+    `  Last 7 days:   ${statistics.fileAge.last7Days}`,
+  );
+
+  console.log(
+    `  Last 30 days:  ${statistics.fileAge.last30Days}`,
+  );
+
+  console.log(
+    `  Older than 90: ${statistics.fileAge.olderThan90Days}`,
+  );
+
+  console.log("\nLargest files:");
+
   console.log(
     statistics.fileSizes
       .map(
@@ -45,7 +74,17 @@ scanner.on("scan-complete", (statistics) => {
       )
       .join("\n"),
   );
+
+  if (statistics.oldestFile) {
+    const daysAgo = getDaysAgo(statistics.oldestFile.mtime);
+
+    console.log(
+      `\nOldest file: ${statistics.oldestFile.name} ` +
+        `(modified ${daysAgo} days ago)`,
+    );
+  }
 });
+
 try {
   switch (command) {
     case "cleanup":
@@ -53,6 +92,7 @@ try {
       break;
 
     case "scan":
+      console.log(`📂 Scanning: ${filePath}`);
       await scanner.scan(filePath);
       break;
 
