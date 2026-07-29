@@ -1,6 +1,7 @@
 import path from "node:path";
 import cleanup from "./lib/cleanup.js";
 import Scanner from "./lib/scanner.js";
+import DuplicateFinder from "./lib/duplicates.js";
 
 const getArguments = () => {
   const [command, ...args] = process.argv.slice(2);
@@ -22,7 +23,7 @@ const getDaysAgo = (date) => {
 const { command, filePath } = getArguments();
 
 const scanner = new Scanner();
-
+const duplicateFinder = new DuplicateFinder();
 let processedFiles = 0;
 
 scanner.on("file-found", () => {
@@ -95,6 +96,12 @@ try {
       console.log(`📂 Scanning: ${filePath}`);
       await scanner.scan(filePath);
       break;
+
+      case "duplicates":
+      console.log(`📂 Searching for duplicates in: ${filePath}`);
+      await duplicateFinder.find(filePath);
+      break;
+      
 
     default:
       console.log(`Невідома команда: ${command}`);
