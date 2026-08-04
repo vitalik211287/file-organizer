@@ -1,17 +1,36 @@
 import path from "node:path";
-import cleanup from "./lib/cleanup.js";
 import Scanner from "./lib/scanner.js";
 import DuplicateFinder from "./lib/duplicates.js";
 import Organizer from "./lib/organizer.js";
+import Cleanup from "./lib/cleanup.js";
 
 const getArguments = () => {
   const [command, ...args] = process.argv.slice(2);
-  const outputIndex = args.indexOf("--output");
-  // console.log(args);
+
+  if (command === "organize") {
+    const outputIndex = args.indexOf("--output");
+
+    return {
+      command,
+      filePath: path.join(...args.slice(0, outputIndex)),
+      outputPath: path.join(...args.slice(outputIndex + 1)),
+    };
+  }
+
+  if (command === "cleanup") {
+    const olderThanIndex = args.indexOf("--older-than");
+
+    return {
+      command,
+      filePath: path.join(...args.slice(0, olderThanIndex)),
+      olderThan: olderThanIndex !== -1 ? Number(args[olderThanIndex + 1]) : 90,
+      confirm: args.includes("--confirm"),
+    };
+  }
+
   return {
     command,
-    filePath: path.join(...args.slice(0, outputIndex)),
-    outputPath: path.join(...args.slice(outputIndex + 1)),
+    filePath: path.join(...args),
   };
 };
 // console.log(getArguments());
@@ -20,11 +39,10 @@ const getDaysAgo = (date) => {
 
   return Math.floor(differenceMilliseconds / (1000 * 60 * 60 * 24));
 };
-
 const formatSize = (bytes) => {
   if (bytes >= 1024 ** 3) {
     return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
-  }s
+  }
 
   if (bytes >= 1024 ** 2) {
     return `${(bytes / 1024 ** 2).toFixed(2)} MB`;
@@ -37,12 +55,13 @@ const formatSize = (bytes) => {
   return `${bytes} B`;
 };
 
-const { command, filePath, outputPath } = getArguments();
+const { command, filePath, outputPath, olderThan, confirm } = getArguments();
 
 // console.log(`Output path: ${outputPath}`);
 const scanner = new Scanner();
 const duplicateFinder = new DuplicateFinder();
 const organizer = new Organizer();
+const cleanup = new Cleanup();
 
 let scannedFiles = 0;
 let hashedFiles = 0;
@@ -140,9 +159,7 @@ let copiedFiles = 0;
 organizer.on("copy-complete", () => {
   copiedFiles++;
 
-  process.stdout.write(
-    `\rCopying files... ${copiedFiles} files`,
-  );
+  process.stdout.write(`\rCopying files... ${copiedFiles} files`);
 });
 
 organizer.on("copy-error", (fileData) => {
@@ -157,9 +174,7 @@ organizer.on("organize-complete", (statistics) => {
   console.log("\n✅ Organization complete!");
   console.log("\nSummary:");
 
-  for (const [category, count] of Object.entries(
-    statistics.categories,
-  )) {
+  for (const [category, count] of Object.entries(statistics.categories)) {
     const categoryPath = path.join(outputPath, category);
 
     console.log(
@@ -175,9 +190,6 @@ organizer.on("organize-complete", (statistics) => {
 
 try {
   switch (command) {
-    case "cleanup":
-      await cleanup(filePath);
-      break;
 
     case "scan":
       console.log(`📂 Scanning: ${filePath}`);
@@ -196,6 +208,16 @@ try {
       );
       await organizer.organize(filePath, outputPath);
       break;
+
+    case "cleanup": {
+      const olderThan = 90;
+
+      console.log(`🧹 Cleanup: ${filePath}`);
+      console.log(`Looking for files older than ${olderThan} days...\n`);
+
+      await cleanup.cleanup(filePath, olderThan, confirm);
+      break;
+    }
 
     default:
       console.log(`Невідома команда: ${command}`);
