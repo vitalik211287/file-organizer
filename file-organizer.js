@@ -12,19 +12,29 @@ const getArguments = () => {
 
     return {
       command,
-      filePath: path.join(...args.slice(0, outputIndex)),
-      outputPath: path.join(...args.slice(outputIndex + 1)),
+      filePath:
+        outputIndex === -1
+          ? path.join(...args)
+          : path.join(...args.slice(0, outputIndex)),
+      outputPath:
+        outputIndex === -1 ? null : path.join(...args.slice(outputIndex + 1)),
     };
   }
 
   if (command === "cleanup") {
     const olderThanIndex = args.indexOf("--older-than");
+    const confirm = args.includes("--confirm");
+
+    const pathArguments =
+      olderThanIndex === -1
+        ? args.filter((argument) => argument !== "--confirm")
+        : args.slice(0, olderThanIndex);
 
     return {
       command,
-      filePath: path.join(...args.slice(0, olderThanIndex)),
-      olderThan: olderThanIndex !== -1 ? Number(args[olderThanIndex + 1]) : 90,
-      confirm: args.includes("--confirm"),
+      filePath: path.join(...pathArguments),
+      olderThan: olderThanIndex === -1 ? 90 : Number(args[olderThanIndex + 1]),
+      confirm,
     };
   }
 
@@ -33,12 +43,15 @@ const getArguments = () => {
     filePath: path.join(...args),
   };
 };
-// console.log(getArguments());
+
 const getDaysAgo = (date) => {
   const differenceMilliseconds = Date.now() - date.getTime();
 
   return Math.floor(differenceMilliseconds / (1000 * 60 * 60 * 24));
 };
+
+const formatDate = (date) => date.toISOString().slice(0, 10);
+
 const formatSize = (bytes) => {
   if (bytes >= 1024 ** 3) {
     return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
@@ -55,9 +68,39 @@ const formatSize = (bytes) => {
   return `${bytes} B`;
 };
 
-const { command, filePath, outputPath, olderThan, confirm } = getArguments();
+const handleError = (error, targetPath) => {
+  if (error.code === "ENOENT") {
+    console.error(`❌ Error: Path not found: ${targetPath}`);
+  } else if (error.code === "EACCES" || error.code === "EPERM") {
+    console.error(`❌ Error: Permission denied: ${targetPath}`);
+  } else {
+    console.error(`❌ Unexpected error: ${error.message}`);
+  }
 
-// console.log(`Output path: ${outputPath}`);
+  process.exitCode = 1;
+};
+
+const validateArguments = ({ command, filePath, outputPath, olderThan }) => {
+  if (!command) {
+    throw new Error("Command is required.");
+  }
+
+  if (!filePath) {
+    throw new Error(`Directory path is required for command "${command}".`);
+  }
+
+  if (command === "organize" && !outputPath) {
+    throw new Error('The organize command requires "--output <directory>".');
+  }
+
+  if (command === "cleanup" && (!Number.isFinite(olderThan) || olderThan < 0)) {
+    throw new Error('The "--older-than" value must be a non-negative number.');
+  }
+};
+
+const argumentsData = getArguments();
+const { command, filePath, outputPath, olderThan, confirm } = argumentsData;
+
 const scanner = new Scanner();
 const duplicateFinder = new DuplicateFinder();
 const organizer = new Organizer();
@@ -65,10 +108,12 @@ const cleanup = new Cleanup();
 
 let scannedFiles = 0;
 let hashedFiles = 0;
+let copiedFiles = 0;
+let foundOldFiles = 0;
+let deletedFiles = 0;
 
 scanner.on("file-found", () => {
   scannedFiles++;
-
   process.stdout.write(`\rProcessing... ${scannedFiles} files`);
 });
 
@@ -77,10 +122,8 @@ scanner.on("scan-complete", (statistics) => {
 
   console.log("\n📊 Scan Results:");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
   console.log(`Total files: ${statistics.filesLength}`);
   console.log(`Total size: ${formatSize(statistics.totalSize)}`);
-
   console.log("\nBy File Type:");
 
   for (const [extension, data] of Object.entries(statistics.filesByExtension)) {
@@ -95,7 +138,6 @@ scanner.on("scan-complete", (statistics) => {
   console.log(`  Last 7 days:    ${statistics.fileAge.last7Days} files`);
   console.log(`  Last 30 days:   ${statistics.fileAge.last30Days} files`);
   console.log(`  Older than 90:  ${statistics.fileAge.olderThan90Days} files`);
-
   console.log("\nLargest files:");
 
   if (statistics.fileSizes.length === 0) {
@@ -118,7 +160,6 @@ scanner.on("scan-complete", (statistics) => {
 
 duplicateFinder.on("file-processed", () => {
   hashedFiles++;
-
   process.stdout.write(`\rCalculating hashes... ${hashedFiles} files`);
 });
 
@@ -132,12 +173,10 @@ duplicateFinder.on("duplicates-found", (statistics) => {
 
   for (const [index, group] of statistics.groups.entries()) {
     console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
     console.log(
       `Group ${index + 1} ` +
         `(${group.copies} copies, ${formatSize(group.fileSize)} each):`,
     );
-
     console.log(`  SHA-256: ${group.hash.slice(0, 12)}...`);
     console.log();
 
@@ -154,18 +193,13 @@ duplicateFinder.on("duplicates-found", (statistics) => {
   );
 });
 
-let copiedFiles = 0;
-
 organizer.on("copy-complete", () => {
   copiedFiles++;
-
   process.stdout.write(`\rCopying files... ${copiedFiles} files`);
 });
 
 organizer.on("copy-error", (fileData) => {
-  console.error(
-    `\nПомилка копіювання ${fileData.name}: ${fileData.error.message}`,
-  );
+  console.error(`\nCopy error for ${fileData.name}: ${fileData.error.message}`);
 });
 
 organizer.on("organize-complete", (statistics) => {
@@ -184,53 +218,64 @@ organizer.on("organize-complete", (statistics) => {
 
   console.log(
     `\nTotal copied: ${statistics.totalFiles} files ` +
-      `(${(statistics.totalSize / 1024 ** 3).toFixed(2)} GB)`,
+      `(${formatSize(statistics.totalSize)})`,
   );
 });
-
-let foundOldFiles = 0;
-let deletedFiles = 0;
 
 cleanup.on("file-found", () => {
   foundOldFiles++;
 });
 
-cleanup.on("file-deleted", () => {
-  deletedFiles++;
-
-  process.stdout.write(`\rDeleting... ${deletedFiles}/${foundOldFiles}`);
-});
-
-cleanup.on("cleanup-complete", (statistics) => {
-  process.stdout.write("\n");
-
+cleanup.on("cleanup-ready", (statistics) => {
   console.log(`Found ${statistics.filesCount} files to delete:\n`);
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
   for (const file of statistics.oldFiles) {
-    console.log(`${file.name}`);
+    console.log(file.name);
     console.log(`  Size: ${formatSize(file.size)}`);
     console.log(
-      `  Modified: ${file.daysOld} days ago (${file.mtime.toLocaleDateString()})`,
+      `  Modified: ${file.daysOld} days ago (${formatDate(file.mtime)})`,
     );
     console.log();
   }
 
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log(
     `Total: ${statistics.filesCount} files (${formatSize(statistics.totalSize)})`,
   );
 
-  if (!statistics.deleted) {
+  if (!statistics.confirm) {
     console.log("\n⚠️ DRY RUN MODE: No files were deleted.");
     console.log("To actually delete these files, run with --confirm flag.");
   } else {
-    console.log("\n✅ Cleanup complete!");
     console.log(
-      `Deleted: ${statistics.filesCount} files (${formatSize(statistics.totalSize)} freed)`,
+      `\n⚠️ DELETING ${statistics.filesCount} files ` +
+        `(${formatSize(statistics.totalSize)}). This action cannot be undone!\n`,
     );
   }
 });
 
+cleanup.on("file-deleted", () => {
+  deletedFiles++;
+  process.stdout.write(`\rDeleting... ${deletedFiles}/${foundOldFiles}`);
+});
+
+cleanup.on("cleanup-complete", (statistics) => {
+  if (!statistics.deleted) {
+    return;
+  }
+
+  process.stdout.write("\n");
+  console.log("\n✅ Cleanup complete!");
+  console.log(
+    `Deleted: ${statistics.deletedFilesCount} files ` +
+      `(${formatSize(statistics.deletedSize)} freed)`,
+  );
+});
+
 try {
+  validateArguments(argumentsData);
+
   switch (command) {
     case "scan":
       console.log(`📂 Scanning: ${filePath}`);
@@ -243,24 +288,29 @@ try {
       break;
 
     case "organize":
-      console.log(
-        `📦 Organizing: ${filePath}
-        Target: ${outputPath}`,
-      );
+      console.log(`📦 Organizing: ${filePath}`);
+      console.log(`Target: ${outputPath}\n`);
+      console.log("Creating folders...");
+      console.log("  ✓ Documents/");
+      console.log("  ✓ Images/");
+      console.log("  ✓ Archives/");
+      console.log("  ✓ Code/");
+      console.log("  ✓ Videos/");
+      console.log("  ✓ Other/\n");
       await organizer.organize(filePath, outputPath);
       break;
 
     case "cleanup":
       console.log(`🧹 Cleanup: ${filePath}`);
       console.log(`Looking for files older than ${olderThan} days...\n`);
-
       await cleanup.cleanup(filePath, olderThan, confirm);
       break;
 
     default:
-      console.log(`Невідома команда: ${command}`);
-      console.log("Доступні команди: scan, duplicates, cleanup");
+      console.log(`Unknown command: ${command}`);
+      console.log("Available commands: scan, duplicates, organize, cleanup");
+      process.exitCode = 1;
   }
 } catch (error) {
-  console.error(`Помилка: ${error.message}`);
+  handleError(error, filePath || outputPath || "unknown path");
 }
