@@ -188,9 +188,50 @@ organizer.on("organize-complete", (statistics) => {
   );
 });
 
+let foundOldFiles = 0;
+let deletedFiles = 0;
+
+cleanup.on("file-found", () => {
+  foundOldFiles++;
+});
+
+cleanup.on("file-deleted", () => {
+  deletedFiles++;
+
+  process.stdout.write(`\rDeleting... ${deletedFiles}/${foundOldFiles}`);
+});
+
+cleanup.on("cleanup-complete", (statistics) => {
+  process.stdout.write("\n");
+
+  console.log(`Found ${statistics.filesCount} files to delete:\n`);
+
+  for (const file of statistics.oldFiles) {
+    console.log(`${file.name}`);
+    console.log(`  Size: ${formatSize(file.size)}`);
+    console.log(
+      `  Modified: ${file.daysOld} days ago (${file.mtime.toLocaleDateString()})`,
+    );
+    console.log();
+  }
+
+  console.log(
+    `Total: ${statistics.filesCount} files (${formatSize(statistics.totalSize)})`,
+  );
+
+  if (!statistics.deleted) {
+    console.log("\n⚠️ DRY RUN MODE: No files were deleted.");
+    console.log("To actually delete these files, run with --confirm flag.");
+  } else {
+    console.log("\n✅ Cleanup complete!");
+    console.log(
+      `Deleted: ${statistics.filesCount} files (${formatSize(statistics.totalSize)} freed)`,
+    );
+  }
+});
+
 try {
   switch (command) {
-
     case "scan":
       console.log(`📂 Scanning: ${filePath}`);
       await scanner.scan(filePath);
@@ -209,15 +250,12 @@ try {
       await organizer.organize(filePath, outputPath);
       break;
 
-    case "cleanup": {
-      const olderThan = 90;
-
+    case "cleanup":
       console.log(`🧹 Cleanup: ${filePath}`);
       console.log(`Looking for files older than ${olderThan} days...\n`);
 
       await cleanup.cleanup(filePath, olderThan, confirm);
       break;
-    }
 
     default:
       console.log(`Невідома команда: ${command}`);
