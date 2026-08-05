@@ -5,7 +5,7 @@
   "license": "ISC",
   "author": "",
   "type": "module",
-  "main": "index.js",
+  "main": "file-organizer.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "scan": "node file-organizer.js scan",

@@ -161,6 +161,7 @@ file-organizer/
   - `file-found`
   - `file-deleted`
   - `cleanup-complete`
+  - `cleanup-ready`
 
 ---
 
